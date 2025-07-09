@@ -1,19 +1,37 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:14
+    container_name: postgres
+    environment:
+      POSTGRES_USER: nessie
+      POSTGRES_PASSWORD: nessie
+      POSTGRES_DB: nessie_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pg-data:/var/lib/postgresql/data
+    networks:
+      - shared_net
+    depends_on:
+      - minio
   nessie:
     image: projectnessie/nessie:latest
     container_name: nessie
-    ports:
-      - "19120:19120"
+    depends_on:
+      - postgres
     environment:
       AWS_REGION: us-east-1
-      QUARKUS_PROFILE: in-memory
+      NESSIE_VERSION_STORE_TYPE: JDBC
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/nessie_db
+      QUARKUS_DATASOURCE_USERNAME: nessie
+      QUARKUS_DATASOURCE_PASSWORD: nessie
+      QUARKUS_OPENTELEMETRY_ENABLED: false
+    ports:
+      - "19120:19120"
     networks:
-      - my-network
-    depends_on:
-      - minio
-
+      - shared_net
   trino:
     image: trinodb/trino:latest
     container_name: trino
@@ -25,7 +43,7 @@ services:
       - ./trino/etc:/etc/trino
       - ./warehouse:/opt/warehouse  # локальное хранилище Iceberg-таблиц
     networks:
-      - my-network
+      - shared_net
     depends_on:
       - nessie
   minio:
@@ -40,7 +58,7 @@ services:
     volumes:
       - minio-data:/data
     networks:
-      - my-network
+      - shared_net
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -50,5 +68,6 @@ services:
 volumes:
   minio-data:
 networks:
-  my-network:
-    driver: bridge
+  shared_net:
+    external: true
+    name: lakehouse_net
